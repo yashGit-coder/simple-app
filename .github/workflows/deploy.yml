@@ -1,0 +1,31 @@
+name: Build and Deploy
+on: [push]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    steps:
+    - uses: actions/checkout@v4
+    - uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+    - name: Build and push Docker image
+      run: |
+        aws ecr get-login-password | docker login --username AWS --password-stdin 925774239467.dkr.ecr.us-east-1.amazonaws.com
+        docker build -t 925774239467.dkr.ecr.us-east-1.amazonaws.com/simple-app:${{ github.sha }} ./app
+        docker tag 925774239467.dkr.ecr.us-east-1.amazonaws.com/simple-app:${{ github.sha }} 925774239467.dkr.ecr.us-east-1.amazonaws.com/simple-app:latest
+        docker push 925774239467.dkr.ecr.us-east-1.amazonaws.com/simple-app:${{ github.sha }}
+        docker push 925774239467.dkr.ecr.us-east-1.amazonaws.com/simple-app:latest
+    - name: Update manifest
+      run: |
+        sed -i "s|image: .*|image: 925774239467.dkr.ecr.us-east-1.amazonaws.com/simple-app:${{ github.sha }}|g" k8s/app.yaml
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add k8s/app.yaml
+        git diff --staged --quiet || git commit -m "Update image to ${{ github.sha }}"
+        git push
